@@ -11,8 +11,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar, Upload, ImageIcon, Video, Eye, Save, Sparkles, Users, Clock, Lock } from "lucide-react"
+import { Calendar, Upload, ImageIcon, Video, Eye, Save, Sparkles, Users, Clock, Lock, Loader2 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { apiClient, type CreateInviteRequest } from "@/lib/api-client"
+import { useToast } from "@/hooks/use-toast"
 
 interface InviteFormData {
   name: string
@@ -55,6 +57,9 @@ interface InviteFormData {
 
 export default function InviteForm() {
   const router = useRouter()
+  const { toast } = useToast()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<InviteFormData>({
     name: "",
     media: {
@@ -107,14 +112,82 @@ export default function InviteForm() {
     }
   }
 
-  const handleSave = () => {
-    localStorage.setItem("inviteData", JSON.stringify(formData))
-    console.log("Invite saved:", formData)
+  const handleSave = async () => {
+    try {
+      setIsSaving(true)
+
+      // Save to localStorage as a backup
+      localStorage.setItem("inviteData", JSON.stringify(formData))
+
+      toast({
+        title: "Draft saved",
+        description: "Your invite has been saved as a draft",
+      })
+    } catch (error) {
+      console.error("Error saving draft:", error)
+      toast({
+        title: "Error saving draft",
+        description: "There was a problem saving your draft",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handlePreview = () => {
     const dataString = encodeURIComponent(JSON.stringify(formData))
     router.push(`/view?data=${dataString}`)
+  }
+
+  const handleSubmit = async () => {
+    try {
+      setIsSubmitting(true)
+
+      // Convert form data to API request format
+      const apiRequest: CreateInviteRequest = {
+        name: formData.name,
+        cover_image_media: formData.media.file,
+        nights: formData.nights,
+        start_datetime: formData.start_datetime,
+        location_name: formData.location_name,
+        location_lat: formData.location_lat || "0",
+        location_lng: formData.location_lng || "0",
+        place_id: formData.place_id || "",
+        category_id: formData.category_id,
+        description: formData.description,
+        soft_delete: false,
+        countries: formData.countries,
+        tags: formData.tags,
+        config: {
+          ...formData.config,
+          ticker_text:
+            formData.config.ticker_text ||
+            `${formData.name} • ${new Date(formData.start_datetime).toLocaleDateString()}`,
+        },
+        custom_links: formData.custom_links,
+      }
+
+      // Submit to API
+      const response = await apiClient.createInvite(apiRequest)
+
+      // Navigate to the view page with the real invite ID
+      router.push(`/invite/${response.id}`)
+
+      toast({
+        title: "Invite created!",
+        description: "Your invite has been successfully created",
+      })
+    } catch (error) {
+      console.error("Error creating invite:", error)
+      toast({
+        title: "Error creating invite",
+        description: error instanceof Error ? error.message : "There was a problem creating your invite",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -445,9 +518,10 @@ export default function InviteForm() {
             <Button
               onClick={handleSave}
               variant="outline"
+              disabled={isSaving}
               className="flex-1 h-14 text-lg font-semibold bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 hover:bg-white/80 dark:hover:bg-slate-800/80 rounded-2xl transition-all duration-300"
             >
-              <Save className="w-5 h-5 mr-3" />
+              {isSaving ? <Loader2 className="w-5 h-5 mr-3 animate-spin" /> : <Save className="w-5 h-5 mr-3" />}
               Save Draft
             </Button>
             <Button
@@ -455,9 +529,28 @@ export default function InviteForm() {
               className="flex-1 h-14 text-lg font-semibold bg-gradient-to-r from-green-600 to-emerald-600 dark:from-purple-600 dark:to-indigo-600 hover:from-green-700 hover:to-emerald-700 dark:hover:from-purple-700 dark:hover:to-indigo-700 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
               <Eye className="w-5 h-5 mr-3" />
-              Preview Magic
+              Preview
             </Button>
           </div>
+
+          {/* Submit Button */}
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !formData.name || !formData.start_datetime}
+            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-green-600 to-emerald-600 dark:from-purple-600 dark:to-indigo-600 hover:from-green-700 hover:to-emerald-700 dark:hover:from-purple-700 dark:hover:to-indigo-700 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-70"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+                Creating Invite...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5 mr-3" />
+                Create Invite
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 

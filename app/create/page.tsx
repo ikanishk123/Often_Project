@@ -19,11 +19,14 @@ export default function CreatePage() {
       <div className="relative z-10 container mx-auto px-4 py-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
+            <div className="inline-flex items-center px-4 py-2 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-white/20 dark:border-slate-700/20 rounded-full text-sm font-medium text-slate-600 dark:text-slate-300 mb-6">
+              ✨ AI-Powered Travel Invites
+            </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-900 via-emerald-700 to-slate-900 dark:from-white dark:via-purple-300 dark:to-white bg-clip-text text-transparent mb-4">
               Create Stunning Travel Invites
             </h1>
             <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed">
-              Create stunning travel invitations with cinematic backgrounds and share your next adventure in style
+              Design pixel-perfect invitations with cinematic backgrounds and share your next adventure in style
             </p>
           </div>
           <InviteForm />
