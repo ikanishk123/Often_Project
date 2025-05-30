@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,10 +11,25 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar, Upload, ImageIcon, Video, Eye, Save, Sparkles, Users, Clock, Lock, Loader2 } from "lucide-react"
+import {
+  Calendar,
+  Upload,
+  ImageIcon,
+  Video,
+  Eye,
+  Save,
+  Sparkles,
+  Users,
+  Clock,
+  Lock,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { apiClient, type CreateInviteRequest } from "@/lib/api-client"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface InviteFormData {
   name: string
@@ -60,6 +75,14 @@ export default function InviteForm() {
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoadingDraft, setIsLoadingDraft] = useState(false)
+  const [formErrors, setFormErrors] = useState<string>("")
+  const [storageInfo, setStorageInfo] = useState<{ used: number; available: number; total: number }>({
+    used: 0,
+    available: 0,
+    total: 0,
+  })
+
   const [formData, setFormData] = useState<InviteFormData>({
     name: "",
     media: {
@@ -95,9 +118,101 @@ export default function InviteForm() {
     custom_links: [],
   })
 
+  // Load draft and storage info on component mount
+  useEffect(() => {
+    loadDraft()
+    updateStorageInfo()
+  }, [])
+
+  // Update storage info periodically
+  useEffect(() => {
+    const interval = setInterval(updateStorageInfo, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const updateStorageInfo = () => {
+    const info = apiClient.getStorageInfo()
+    setStorageInfo(info)
+  }
+
+  const loadDraft = () => {
+    try {
+      setIsLoadingDraft(true)
+      const draft = apiClient.getDraft()
+      if (draft) {
+        console.log("📄 Loading saved draft")
+        setFormData(draft)
+        toast({
+          title: "Draft loaded",
+          description: "Your previously saved draft has been loaded",
+        })
+      }
+    } catch (error) {
+      console.error("Error loading draft:", error)
+    } finally {
+      setIsLoadingDraft(false)
+    }
+  }
+
+  const formatDateTime = (dateTimeString: string): string => {
+    if (!dateTimeString) return ""
+    try {
+      // Handle both ISO strings and datetime-local format
+      const date = new Date(dateTimeString)
+      if (isNaN(date.getTime())) {
+        return ""
+      }
+
+      // Format for datetime-local input (YYYY-MM-DDTHH:MM)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, "0")
+      const day = String(date.getDate()).padStart(2, "0")
+      const hours = String(date.getHours()).padStart(2, "0")
+      const minutes = String(date.getMinutes()).padStart(2, "0")
+
+      return `${year}-${month}-${day}T${hours}:${minutes}`
+    } catch (error) {
+      console.error("Error formatting datetime:", error)
+      return ""
+    }
+  }
+
+  const handleDateTimeChange = (value: string) => {
+    try {
+      if (value) {
+        // Convert datetime-local value to ISO string
+        const date = new Date(value)
+        if (!isNaN(date.getTime())) {
+          setFormData((prev) => ({
+            ...prev,
+            start_datetime: date.toISOString(),
+          }))
+        }
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          start_datetime: "",
+        }))
+      }
+    } catch (error) {
+      console.error("Error handling datetime change:", error)
+    }
+  }
+
   const handleMediaUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      // Check file size (limit to 10MB for localStorage)
+      const maxSize = 10 * 1024 * 1024 // 10MB
+      if (file.size > maxSize) {
+        toast({
+          title: "File too large",
+          description: "Please select a file smaller than 10MB",
+          variant: "destructive",
+        })
+        return
+      }
+
       const preview = URL.createObjectURL(file)
       const type = file.type.startsWith("video/") ? "video" : "image"
 
@@ -109,40 +224,110 @@ export default function InviteForm() {
           preview,
         },
       }))
+
+      // Auto-save draft when media is uploaded
+      setTimeout(() => {
+        handleSave(true)
+      }, 500)
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (silent = false) => {
     try {
       setIsSaving(true)
+      setFormErrors("")
 
-      // Save to localStorage as a backup
-      localStorage.setItem("inviteData", JSON.stringify(formData))
-
-      toast({
-        title: "Draft saved",
-        description: "Your invite has been saved as a draft",
-      })
+      const success = apiClient.saveDraft(formData)
+      if (success) {
+        updateStorageInfo()
+        if (!silent) {
+          toast({
+            title: "Draft saved",
+            description: "Your invite has been saved as a draft",
+          })
+        }
+      } else {
+        throw new Error("Failed to save draft to localStorage")
+      }
     } catch (error) {
-      console.error("Error saving draft:", error)
-      toast({
-        title: "Error saving draft",
-        description: "There was a problem saving your draft",
-        variant: "destructive",
-      })
+      console.error("❌ Error saving draft:", error)
+      const errorMessage = error instanceof Error ? error.message : "There was a problem saving your draft"
+      setFormErrors(errorMessage)
+      if (!silent) {
+        toast({
+          title: "Error saving draft",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
     } finally {
       setIsSaving(false)
     }
   }
 
   const handlePreview = () => {
-    const dataString = encodeURIComponent(JSON.stringify(formData))
-    router.push(`/view?data=${dataString}`)
+    try {
+      console.log("👁️ Opening preview...")
+      const dataString = encodeURIComponent(JSON.stringify(formData))
+      console.log("📦 Preview data size:", dataString.length, "characters")
+      router.push(`/view?data=${dataString}`)
+    } catch (error) {
+      console.error("❌ Error opening preview:", error)
+      const errorMessage = "There was a problem opening the preview"
+      setFormErrors(errorMessage)
+      toast({
+        title: "Error opening preview",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const validateForm = (): boolean => {
+    const errors: string[] = []
+
+    if (!formData.name.trim()) {
+      errors.push("Event name is required")
+    }
+
+    if (!formData.start_datetime) {
+      errors.push("Start date and time is required")
+    } else {
+      // Validate that the date is in the future
+      const startDate = new Date(formData.start_datetime)
+      const now = new Date()
+      if (startDate <= now) {
+        errors.push("Start date must be in the future")
+      }
+    }
+
+    if (formData.nights < 1) {
+      errors.push("Duration must be at least 1 night")
+    }
+
+    if (formData.config.capacity < 1) {
+      errors.push("Capacity must be at least 1 person")
+    }
+
+    if (errors.length > 0) {
+      setFormErrors(errors.join(", "))
+      return false
+    }
+
+    setFormErrors("")
+    return true
   }
 
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true)
+      setFormErrors("")
+      console.log("🚀 Starting invite creation with localStorage...")
+
+      // Validate form
+      if (!validateForm()) {
+        return
+      }
 
       // Convert form data to API request format
       const apiRequest: CreateInviteRequest = {
@@ -168,21 +353,35 @@ export default function InviteForm() {
         custom_links: formData.custom_links,
       }
 
-      // Submit to API
-      const response = await apiClient.createInvite(apiRequest)
+      console.log("📤 Creating invite with localStorage...")
 
-      // Navigate to the view page with the real invite ID
+      // Submit to localStorage
+      const response = await apiClient.createInvite(apiRequest)
+      console.log("✅ Invite created:", response)
+
+      // Update storage info
+      updateStorageInfo()
+
+      // Navigate to the view page with the invite ID
+      console.log("🔄 Navigating to invite page:", `/invite/${response.id}`)
       router.push(`/invite/${response.id}`)
 
       toast({
         title: "Invite created!",
-        description: "Your invite has been successfully created",
+        description: "Your invite has been successfully created and saved locally",
       })
     } catch (error) {
-      console.error("Error creating invite:", error)
+      console.error("❌ Error creating invite:", error)
+
+      let errorMessage = "There was a problem creating your invite"
+      if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      setFormErrors(errorMessage)
       toast({
         title: "Error creating invite",
-        description: error instanceof Error ? error.message : "There was a problem creating your invite",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -190,19 +389,106 @@ export default function InviteForm() {
     }
   }
 
+  const clearDraft = () => {
+    try {
+      apiClient.clearDraft()
+      setFormData({
+        name: "",
+        media: {
+          type: "image",
+          file: null,
+          preview: "",
+        },
+        nights: 3,
+        start_datetime: "",
+        location_name: "",
+        location_lat: "",
+        location_lng: "",
+        place_id: "",
+        category_id: "1a80a229-1ad6-405c-accc-28e38e1f2ecc",
+        description: "",
+        countries: {
+          start: "US",
+          end: "US",
+        },
+        tags: [],
+        config: {
+          capacity: 12,
+          enable_waitlist: true,
+          guest_approval: true,
+          is_public: false,
+          password_key: "",
+          status: "DRAFT",
+          is_ticker: true,
+          ticker_text: "",
+          place_name: "",
+          rules: [],
+        },
+        custom_links: [],
+      })
+      updateStorageInfo()
+      toast({
+        title: "Draft cleared",
+        description: "Form has been reset and draft cleared",
+      })
+    } catch (error) {
+      console.error("Error clearing draft:", error)
+    }
+  }
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+  }
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      {/* Storage Info */}
+      <div className="xl:col-span-2">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Local Storage:</strong> {formatBytes(storageInfo.used)} used of ~{formatBytes(storageInfo.total)}{" "}
+            available. All data is stored locally in your browser.
+          </AlertDescription>
+        </Alert>
+      </div>
+
+      {/* Form Errors */}
+      {formErrors && (
+        <div className="xl:col-span-2">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{formErrors}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
       {/* Form Section */}
       <Card className="bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border-0 shadow-2xl rounded-3xl overflow-hidden">
         <CardHeader className="bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-purple-900/30 dark:to-indigo-900/30 pb-8 relative">
-          <div className="absolute top-4 right-4">
+          <div className="absolute top-4 right-4 flex gap-2">
+            <Button
+              onClick={loadDraft}
+              variant="outline"
+              size="sm"
+              disabled={isLoadingDraft}
+              className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20"
+            >
+              {isLoadingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            </Button>
             <ThemeToggle />
           </div>
           <CardTitle className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-emerald-700 to-slate-900 dark:from-white dark:via-purple-300 dark:to-white bg-clip-text text-transparent flex items-center gap-3">
             <Sparkles className="w-8 h-8 text-emerald-600 dark:text-purple-400" />
             Invite Details
           </CardTitle>
-          <p className="text-slate-600 dark:text-slate-300 text-lg">Craft your perfect travel invitation</p>
+          <p className="text-slate-600 dark:text-slate-300 text-lg">
+            Craft your perfect travel invitation (stored locally)
+          </p>
         </CardHeader>
         <CardContent className="p-8 space-y-8">
           {/* Media Upload */}
@@ -286,7 +572,9 @@ export default function InviteForm() {
                     <p className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">
                       Upload {formData.media.type === "video" ? "MP4 video" : "image"}
                     </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Drag and drop or click to browse</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Max 10MB • Drag and drop or click to browse
+                    </p>
                   </div>
                 )}
               </Label>
@@ -298,15 +586,20 @@ export default function InviteForm() {
             <div className="flex items-center gap-3">
               <div className="w-2 h-8 bg-gradient-to-b from-green-500 to-emerald-500 dark:from-purple-500 dark:to-indigo-500 rounded-full"></div>
               <Label htmlFor="eventName" className="text-xl font-bold text-slate-900 dark:text-white">
-                Event Name
+                Event Name *
               </Label>
             </div>
             <Input
               id="eventName"
               value={formData.name}
-              onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, name: e.target.value }))
+                // Auto-save draft after typing
+                setTimeout(() => handleSave(true), 1000)
+              }}
               placeholder="Enter your amazing event name"
               className="h-14 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl px-6 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
+              required
             />
           </div>
 
@@ -321,7 +614,10 @@ export default function InviteForm() {
             <Input
               id="location"
               value={formData.location_name}
-              onChange={(e) => setFormData((prev) => ({ ...prev, location_name: e.target.value }))}
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, location_name: e.target.value }))
+                setTimeout(() => handleSave(true), 1000)
+              }}
               placeholder="Enter location (e.g., Big Bear Lake)"
               className="h-14 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl px-6 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
             />
@@ -339,7 +635,10 @@ export default function InviteForm() {
               id="nights"
               type="number"
               value={formData.nights}
-              onChange={(e) => setFormData((prev) => ({ ...prev, nights: Number.parseInt(e.target.value) || 0 }))}
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, nights: Number.parseInt(e.target.value) || 0 }))
+                setTimeout(() => handleSave(true), 1000)
+              }}
               className="h-14 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl px-6 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
               min="1"
             />
@@ -350,18 +649,20 @@ export default function InviteForm() {
             <div className="flex items-center gap-3">
               <div className="w-2 h-8 bg-gradient-to-b from-green-500 to-emerald-500 dark:from-purple-500 dark:to-indigo-500 rounded-full"></div>
               <Label htmlFor="startDate" className="text-xl font-bold text-slate-900 dark:text-white">
-                Start Date & Time
+                Start Date & Time *
               </Label>
             </div>
             <div className="relative">
               <Input
                 id="startDate"
                 type="datetime-local"
-                value={formData.start_datetime ? new Date(formData.start_datetime).toISOString().slice(0, 16) : ""}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, start_datetime: new Date(e.target.value).toISOString() }))
-                }
+                value={formatDateTime(formData.start_datetime)}
+                onChange={(e) => {
+                  handleDateTimeChange(e.target.value)
+                  setTimeout(() => handleSave(true), 1000)
+                }}
                 className="h-14 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl pl-14 pr-6 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
+                required
               />
               <Calendar className="w-6 h-6 text-slate-400 dark:text-slate-500 absolute left-4 top-4" />
             </div>
@@ -378,7 +679,10 @@ export default function InviteForm() {
             <Textarea
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, description: e.target.value }))
+                setTimeout(() => handleSave(true), 1000)
+              }}
               placeholder="Tell everyone about this incredible adventure..."
               className="min-h-[140px] text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl p-6 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300 resize-none"
             />
@@ -405,12 +709,13 @@ export default function InviteForm() {
                   id="capacity"
                   type="number"
                   value={formData.config.capacity}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, capacity: Number.parseInt(e.target.value) || 0 },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 1000)
+                  }}
                   className="h-12 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl px-4 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
                   min="1"
                 />
@@ -429,12 +734,13 @@ export default function InviteForm() {
                   id="password"
                   type="text"
                   value={formData.config.password_key}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, password_key: e.target.value },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 1000)
+                  }}
                   placeholder="Optional password"
                   className="h-12 text-lg bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 rounded-2xl px-4 focus:bg-white/80 dark:focus:bg-slate-800/80 transition-all duration-300"
                 />
@@ -450,12 +756,13 @@ export default function InviteForm() {
                 </div>
                 <Switch
                   checked={formData.config.guest_approval}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, guest_approval: checked },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 500)
+                  }}
                   className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-emerald-500 dark:data-[state=checked]:from-purple-500 dark:data-[state=checked]:to-indigo-500"
                 />
               </div>
@@ -467,12 +774,13 @@ export default function InviteForm() {
                 </div>
                 <Switch
                   checked={formData.config.enable_waitlist}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, enable_waitlist: checked },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 500)
+                  }}
                   className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-emerald-500 dark:data-[state=checked]:from-purple-500 dark:data-[state=checked]:to-indigo-500"
                 />
               </div>
@@ -484,12 +792,13 @@ export default function InviteForm() {
                 </div>
                 <Switch
                   checked={formData.config.is_public}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, is_public: checked },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 500)
+                  }}
                   className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-emerald-500 dark:data-[state=checked]:from-purple-500 dark:data-[state=checked]:to-indigo-500"
                 />
               </div>
@@ -501,12 +810,13 @@ export default function InviteForm() {
                 </div>
                 <Switch
                   checked={formData.config.is_ticker}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
                     setFormData((prev) => ({
                       ...prev,
                       config: { ...prev.config, is_ticker: checked },
                     }))
-                  }
+                    setTimeout(() => handleSave(true), 500)
+                  }}
                   className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-emerald-500 dark:data-[state=checked]:from-purple-500 dark:data-[state=checked]:to-indigo-500"
                 />
               </div>
@@ -516,13 +826,20 @@ export default function InviteForm() {
           {/* Action Buttons */}
           <div className="flex gap-4 pt-8">
             <Button
-              onClick={handleSave}
+              onClick={() => handleSave(false)}
               variant="outline"
               disabled={isSaving}
               className="flex-1 h-14 text-lg font-semibold bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 hover:bg-white/80 dark:hover:bg-slate-800/80 rounded-2xl transition-all duration-300"
             >
               {isSaving ? <Loader2 className="w-5 h-5 mr-3 animate-spin" /> : <Save className="w-5 h-5 mr-3" />}
               Save Draft
+            </Button>
+            <Button
+              onClick={clearDraft}
+              variant="outline"
+              className="h-14 px-6 text-lg font-semibold bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 hover:bg-white/80 dark:hover:bg-slate-800/80 rounded-2xl transition-all duration-300"
+            >
+              Clear
             </Button>
             <Button
               onClick={handlePreview}

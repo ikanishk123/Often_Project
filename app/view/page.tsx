@@ -108,11 +108,21 @@ export default function ViewPage() {
           </div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">No invite data found</h2>
           <p className="text-slate-600 dark:text-slate-300 mb-6">Create a beautiful travel invite to get started</p>
-          <Link href="/create">
-            <Button className="bg-gradient-to-r from-green-600 to-emerald-600 dark:from-purple-600 dark:to-indigo-600 hover:from-green-700 hover:to-emerald-700 dark:hover:from-purple-700 dark:hover:to-indigo-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
-              Create New Invite
-            </Button>
-          </Link>
+          <div className="flex gap-4 justify-center">
+            <Link href="/invites">
+              <Button
+                variant="outline"
+                className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 hover:bg-white/80 dark:hover:bg-slate-800/80 rounded-2xl px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+              >
+                View Invites
+              </Button>
+            </Link>
+            <Link href="/create">
+              <Button className="bg-gradient-to-r from-green-600 to-emerald-600 dark:from-purple-600 dark:to-indigo-600 hover:from-green-700 hover:to-emerald-700 dark:hover:from-purple-700 dark:hover:to-indigo-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                Create New Invite
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -151,13 +161,13 @@ export default function ViewPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-12">
             <div className="flex items-center gap-6">
-              <Link href="/create">
+              <Link href="/invites">
                 <Button
                   variant="outline"
                   className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-white/20 dark:border-slate-700/20 hover:bg-white/80 dark:hover:bg-slate-800/80 rounded-2xl px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Edit
+                  Back to Invites
                 </Button>
               </Link>
               <div>
