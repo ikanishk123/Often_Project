@@ -28,8 +28,8 @@ export default function CreatePage() {
               <div className="flex items-center gap-4">
                 <ThemeToggle />
                 <NavigationMenu />
-              </div>
-            </div> */}
+              </div> */}
+            </div> 
             <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-900 via-emerald-700 to-slate-900 dark:from-white dark:via-purple-300 dark:to-white bg-clip-text text-transparent mb-4">
               Create Travel Invites
             </h1>
