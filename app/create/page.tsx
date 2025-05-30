@@ -21,12 +21,12 @@ export default function CreatePage() {
       <div className="relative z-10 container mx-auto px-4 py-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
-            <div className="flex justify-between items-center mb-6">
+            {/* <div className="flex justify-between items-center mb-6">
               
               <div className="flex items-center gap-4">
                 <ThemeToggle />
                 <NavigationMenu />
-              </div>
+              </div> */}
             </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-900 via-emerald-700 to-slate-900 dark:from-white dark:via-purple-300 dark:to-white bg-clip-text text-transparent mb-4">
               Create Travel Invites
